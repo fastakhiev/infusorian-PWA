@@ -1,0 +1,19 @@
+{
+  "name": "Инфузория-туфелька",
+  "short_name": "Инфузория",
+  "description": "Мини-игра: выращивай инфузорию-туфельку с любовью.",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fff4fb",
+  "theme_color": "#ff9ed1",
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
