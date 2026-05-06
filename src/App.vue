@@ -20,6 +20,8 @@ const isSleepingNow = ref(false)
 const sleepType = ref('')
 const sleepEndsAt = ref(0)
 const sleepRemainingSec = ref(0)
+const ownedOutfits = ref(['none'])
+const selectedOutfit = ref('none')
 
 const sparklePulse = ref(false)
 const clickedPet = ref(false)
@@ -41,6 +43,50 @@ const FEED_COSTS = {
   vitamins: 9,
   dessert: 12,
 }
+const OUTFITS = [
+  {
+    id: 'none',
+    title: 'Без наряда',
+    description: 'Классический микромирный образ.',
+    price: 0,
+    emoji: '🫧',
+  },
+  {
+    id: 'bow',
+    title: 'Бантик-микро',
+    description: 'Милый розовый бантик для важных прогулок.',
+    price: 18,
+    emoji: '🎀',
+  },
+  {
+    id: 'crown',
+    title: 'Корона инфокоролевы',
+    description: 'Для инфозурии, которая знает себе цену.',
+    price: 32,
+    emoji: '👑',
+  },
+  {
+    id: 'glasses',
+    title: 'Очки умницы',
+    description: 'Сразу видно: это интеллектуальная туфелька.',
+    price: 24,
+    emoji: '🤓',
+  },
+  {
+    id: 'scarf',
+    title: 'Шарфик из водорослей',
+    description: 'Теплый, мягкий и чуть-чуть болотный.',
+    price: 28,
+    emoji: '🧣',
+  },
+  {
+    id: 'stars',
+    title: 'Звездная аура',
+    description: 'Вокруг нее мерцают маленькие победы.',
+    price: 45,
+    emoji: '✨',
+  },
+]
 let bubbleSpawnInterval = null
 let gameTimerInterval = null
 let rhythmBeatInterval = null
@@ -91,6 +137,16 @@ const miniGameTitle = computed(() => {
   return 'Ритм ресничек'
 })
 
+const currentOutfit = computed(
+  () => OUTFITS.find((outfit) => outfit.id === selectedOutfit.value) || OUTFITS[0]
+)
+
+const outfitClasses = computed(() => ({
+  [`pet-outfit-${selectedOutfit.value}`]: selectedOutfit.value !== 'none',
+}))
+
+const isOutfitOwned = (id) => ownedOutfits.value.includes(id)
+
 const growthHint = computed(() => {
   if (goodState.value) return 'Идеальный уход! Рост ускорен.'
   if (isHungry.value || isSleepy.value || isSad.value) return 'Ей тяжело: рост замедлен.'
@@ -125,6 +181,8 @@ const save = () => {
       sleepType: sleepType.value,
       sleepEndsAt: sleepEndsAt.value,
       sleepRemainingSec: sleepRemainingSec.value,
+      ownedOutfits: ownedOutfits.value,
+      selectedOutfit: selectedOutfit.value,
     })
   )
 }
@@ -136,7 +194,7 @@ const load = () => {
   try {
     const state = JSON.parse(raw)
     screen.value = state.screen === 'final' ? 'final' : state.screen === 'game' ? 'game' : 'start'
-    tab.value = ['play', 'feed', 'sleep'].includes(state.tab) ? state.tab : 'play'
+    tab.value = ['play', 'feed', 'sleep', 'shop'].includes(state.tab) ? state.tab : 'play'
     growth.value = clamp(Number(state.growth ?? 0))
     hunger.value = clamp(Number(state.hunger ?? 62))
     fun.value = clamp(Number(state.fun ?? 62))
@@ -150,6 +208,11 @@ const load = () => {
     sleepType.value = state.sleepType || ''
     sleepEndsAt.value = Number(state.sleepEndsAt ?? 0)
     sleepRemainingSec.value = Math.max(0, Number(state.sleepRemainingSec ?? 0))
+    const savedOwnedOutfits = Array.isArray(state.ownedOutfits) ? state.ownedOutfits : ['none']
+    ownedOutfits.value = [...new Set(['none', ...savedOwnedOutfits])].filter((id) =>
+      OUTFITS.some((outfit) => outfit.id === id)
+    )
+    selectedOutfit.value = ownedOutfits.value.includes(state.selectedOutfit) ? state.selectedOutfit : 'none'
     if (growth.value >= 100) screen.value = 'final'
     if (isSleepingNow.value) {
       tab.value = 'sleep'
@@ -189,6 +252,8 @@ const resetGame = () => {
   sleepType.value = ''
   sleepEndsAt.value = 0
   sleepRemainingSec.value = 0
+  ownedOutfits.value = ['none']
+  selectedOutfit.value = 'none'
   message.value = 'Сброс выполнен. Вода чистая, сцена готова.'
   if (sleepCountdownInterval) {
     clearInterval(sleepCountdownInterval)
@@ -493,9 +558,39 @@ const startMiniGame = () => {
   }, 1000)
 }
 
+const buyOrWearOutfit = (outfit) => {
+  if (isSleepingNow.value) {
+    message.value = `Инфузория спит (${sleepRemainingText.value}). Наряды примерим после сна.`
+    save()
+    return
+  }
+
+  tab.value = 'shop'
+
+  if (isOutfitOwned(outfit.id)) {
+    selectedOutfit.value = outfit.id
+    message.value = outfit.id === 'none' ? 'Наряд снят. Натуральная красота вернулась.' : `Наряд "${outfit.title}" надет!`
+    save()
+    return
+  }
+
+  if (coins.value < outfit.price) {
+    message.value = `Не хватает монет на "${outfit.title}". Нужно ${outfit.price}, у тебя ${coins.value}.`
+    save()
+    return
+  }
+
+  coins.value -= outfit.price
+  ownedOutfits.value = [...ownedOutfits.value, outfit.id]
+  selectedOutfit.value = outfit.id
+  fun.value = clamp(fun.value + 6)
+  message.value = `Куплено и надето: "${outfit.title}" (-${outfit.price} монет). Инфозурия чувствует себя звездой!`
+  save()
+}
+
 const setTab = (nextTab) => {
   if (isSleepingNow.value && nextTab !== 'sleep') {
-    message.value = `Сейчас сон (${sleepRemainingText.value}). Вкладки Играть и Кормить заблокированы.`
+    message.value = `Сейчас сон (${sleepRemainingText.value}). Вкладки Играть, Кормить и Магазин заблокированы.`
     save()
     return
   }
@@ -593,14 +688,12 @@ onUnmounted(() => {
 <template>
   <main class="app">
     <section v-if="screen === 'start'" class="card">
-      <p class="eyebrow">Mini PWA Pet-Care</p>
       <h1>Инфузория-туфелька</h1>
       <p class="lead">
-        Ухаживай за питомцем, как в уютной игре про говорящего друга: играй, корми, укладывай
-        спать и вырасти ее в настоящую модную туфлю.
+        Вырасти свою Инфузория-туфельку до туфельки
       </p>
       <div class="chips">
-        <span>Милота</span><span>Абсурд</span><span>Романтика</span>
+        <span>Special for zhenka pechenka</span>
       </div>
       <button class="btn primary" @click="startGame">Начать уход</button>
     </section>
@@ -624,14 +717,26 @@ onUnmounted(() => {
 
         <div
           class="pet"
-          :class="[petMoodClass, `stage-${stageIndex + 1}`, { clicked: clickedPet }]"
+          :class="[petMoodClass, outfitClasses, `stage-${stageIndex + 1}`, { clicked: clickedPet }]"
           @click="petClickReaction"
         >
+          <span v-if="selectedOutfit === 'bow'" class="outfit-piece outfit-bow">🎀</span>
+          <span v-if="selectedOutfit === 'crown'" class="outfit-piece outfit-crown">👑</span>
+          <span v-if="selectedOutfit === 'glasses'" class="outfit-piece outfit-glasses">∞</span>
+          <span v-if="selectedOutfit === 'scarf'" class="outfit-piece outfit-scarf"></span>
+          <span v-if="selectedOutfit === 'stars'" class="outfit-piece outfit-star star-a">✦</span>
+          <span v-if="selectedOutfit === 'stars'" class="outfit-piece outfit-star star-b">✧</span>
+          <span v-if="selectedOutfit === 'stars'" class="outfit-piece outfit-star star-c">✦</span>
           <span class="eye left" :class="{ closed: eyesClosed }"></span>
           <span class="eye right" :class="{ closed: eyesClosed }"></span>
           <span class="mouth"></span>
         </div>
       </div>
+
+      <!-- <div class="outfit-status">
+        <span>Наряд: {{ currentOutfit.title }}</span>
+        <button class="tiny-link" @click="setTab('shop')">Открыть магазин</button>
+      </div> -->
 
       <div class="meter-block">
         <div class="line"><span>Прогресс до туфли</span><strong>{{ progressToShoe }}</strong></div>
@@ -674,6 +779,14 @@ onUnmounted(() => {
           Кормить
         </button>
         <button class="tab" :class="{ active: tab === 'sleep' }" @click="setTab('sleep')">Спать</button>
+        <button
+          class="tab"
+          :class="{ active: tab === 'shop' }"
+          :disabled="isSleepingNow"
+          @click="setTab('shop')"
+        >
+          Магазин
+        </button>
       </nav>
 
       <div v-if="tab === 'play'" class="actions">
@@ -751,6 +864,25 @@ onUnmounted(() => {
         <button class="btn secondary" :disabled="coins < FEED_COSTS.dessert" @click="bubbleDessert">
           Десерт-пузырек ({{ FEED_COSTS.dessert }} 🪙)
         </button>
+      </div>
+
+      <div v-else-if="tab === 'shop'" class="actions shop-grid">
+        <article v-for="outfit in OUTFITS" :key="outfit.id" class="shop-item" :class="{ selected: selectedOutfit === outfit.id }">
+          <div class="shop-emoji">{{ outfit.emoji }}</div>
+          <div class="shop-info">
+            <strong>{{ outfit.title }}</strong>
+            <span>{{ outfit.description }}</span>
+            <small v-if="isOutfitOwned(outfit.id)">Уже в гардеробе</small>
+            <small v-else>{{ outfit.price }} 🪙</small>
+          </div>
+          <button
+            class="btn secondary shop-btn"
+            :disabled="!isOutfitOwned(outfit.id) && coins < outfit.price"
+            @click="buyOrWearOutfit(outfit)"
+          >
+            {{ selectedOutfit === outfit.id ? 'Надето' : isOutfitOwned(outfit.id) ? 'Надеть' : 'Купить' }}
+          </button>
+        </article>
       </div>
 
       <div v-else class="actions">
@@ -1024,6 +1156,102 @@ h2 {
   filter: saturate(0.85);
 }
 
+
+.outfit-piece {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+}
+.outfit-bow {
+  top: -16px;
+  left: 50%;
+  font-size: 28px;
+  transform: translateX(-50%) rotate(-8deg);
+  filter: drop-shadow(0 3px 4px rgba(135, 65, 120, 0.25));
+}
+.outfit-crown {
+  top: -24px;
+  left: 48%;
+  font-size: 32px;
+  transform: translateX(-50%) rotate(-9deg);
+  filter: drop-shadow(0 3px 4px rgba(135, 65, 120, 0.25));
+}
+.outfit-glasses {
+  top: 29%;
+  left: 50%;
+  width: 58px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: #5f4a6e;
+  font-size: 38px;
+  font-weight: 900;
+  line-height: 1;
+  transform: translateX(-50%);
+}
+.outfit-scarf {
+  left: 20%;
+  bottom: 18%;
+  width: 70%;
+  height: 16px;
+  border-radius: 999px 999px 999px 8px;
+  background: repeating-linear-gradient(90deg, #6ad7b2 0 12px, #b7f3de 12px 22px);
+  box-shadow: 0 3px 8px rgba(70, 159, 137, 0.28);
+  transform: rotate(-5deg);
+}
+.outfit-scarf::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  top: 10px;
+  width: 18px;
+  height: 28px;
+  border-radius: 0 0 8px 8px;
+  background: #6ad7b2;
+}
+.outfit-star {
+  color: #ffd05a;
+  text-shadow: 0 0 8px rgba(255, 208, 90, 0.9);
+  animation: starTwinkle 1.2s ease-in-out infinite alternate;
+}
+.star-a {
+  top: -16px;
+  left: 10%;
+  font-size: 20px;
+}
+.star-b {
+  right: -18px;
+  top: 18%;
+  font-size: 24px;
+  animation-delay: 0.25s;
+}
+.star-c {
+  left: -16px;
+  bottom: 18%;
+  font-size: 18px;
+  animation-delay: 0.45s;
+}
+.outfit-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  background: #fff8e8;
+  border: 1px solid #f4dfab;
+  border-radius: 14px;
+  padding: 8px 10px;
+  color: #765d82;
+  font-size: 13px;
+  font-weight: 800;
+}
+.tiny-link {
+  border: 0;
+  background: transparent;
+  color: #ff5cab;
+  font-weight: 900;
+  cursor: pointer;
+}
+
 .meter-block,
 .stats {
   display: grid;
@@ -1077,7 +1305,7 @@ h2 {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 .tab {
@@ -1101,6 +1329,55 @@ h2 {
   display: grid;
   gap: 8px;
 }
+
+.shop-grid {
+  gap: 10px;
+}
+.shop-item {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #f0d8eb;
+  border-radius: 16px;
+  background: #fff9fd;
+  padding: 10px;
+}
+.shop-item.selected {
+  border-color: #ff8ec5;
+  box-shadow: 0 0 0 3px rgba(255, 142, 197, 0.16);
+}
+.shop-emoji {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: #f7efff;
+  font-size: 24px;
+}
+.shop-info {
+  display: grid;
+  gap: 2px;
+  color: #6f5e80;
+}
+.shop-info strong {
+  font-size: 14px;
+}
+.shop-info span,
+.shop-info small {
+  font-size: 12px;
+}
+.shop-info small {
+  color: #ff5cab;
+  font-weight: 900;
+}
+.shop-btn {
+  min-width: 76px;
+  padding: 9px 10px;
+  font-size: 12px;
+}
+
 .sleeping-note {
   background: #eef3ff;
   border: 1px dashed #b8c8ef;
@@ -1332,6 +1609,16 @@ h2 {
     transform: scaleY(1);
   }
 }
+@keyframes starTwinkle {
+  0% {
+    transform: scale(0.86) rotate(-8deg);
+    opacity: 0.65;
+  }
+  100% {
+    transform: scale(1.16) rotate(8deg);
+    opacity: 1;
+  }
+}
 @keyframes transformGlow {
   0%,
   100% {
@@ -1349,6 +1636,15 @@ h2 {
   .card {
     border-radius: 18px;
     padding: 12px;
+  }
+  .tabs {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .shop-item {
+    grid-template-columns: 38px 1fr;
+  }
+  .shop-btn {
+    grid-column: 1 / -1;
   }
 }
 </style>
