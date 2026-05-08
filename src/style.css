@@ -4,11 +4,13 @@ body,
   margin: 0;
   min-height: 100%;
 }
-html,
+button,
 
-body {
+a,
 
-  overflow: hidden;
+input,
+
+textarea {
 
   touch-action: manipulation;
 
